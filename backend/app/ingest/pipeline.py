@@ -88,19 +88,17 @@ async def _process_images(images: list[tuple[bytes, str]]) -> list[str]:
 async def run_ingest_pipeline(
     file_path: Path,
     content_hash: str,
+    task_id: str = "",
 ) -> IngestResponse:
     """
-    完整的 Ingest Pipeline：
-    1. 格式识别 & 文本提取
-    2. SHA256 去重检查
-    3. 图片 Vision 描述
-    4. 智能分段
-    5. 自动分类
-    6. Wiki 页面生成
-    7. 主题聚合页更新
-    8. index.md 重建
-    9. 写入数据库
+    完整的 Ingest Pipeline，每步更新任务状态。
     """
+    from app.ingest.tasks import update_task_status, TaskStatus
+
+    def _update(status: TaskStatus):
+        if task_id:
+            update_task_status(task_id, status)
+
     source_id = str(uuid.uuid4())[:12]
     filename = file_path.name
     file_type = _detect_file_type(file_path)
@@ -128,6 +126,7 @@ async def run_ingest_pipeline(
         await db.close()
 
     # 2. 文本提取
+    _update(TaskStatus.EXTRACTING)
     text, headings, images = await _extract_text(file_path, file_type)
 
     # 3. 图片描述（如有图片）
@@ -143,12 +142,15 @@ async def run_ingest_pipeline(
             text += desc_text
 
     # 4. 自动分类
+    _update(TaskStatus.CLASSIFYING)
     classification = await classify_document(filename, text)
 
-    # 5. 智能分段（暂存，后续 Phase 3 用于嵌入）
+    # 5. 智能分段
+    _update(TaskStatus.SEGMENTING)
     segments = await segment_document(text, headings)
 
     # 6. Wiki 页面生成
+    _update(TaskStatus.GENERATING)
     wiki_result = await generate_wiki_pages(
         source_id=source_id,
         filename=filename,
@@ -171,6 +173,7 @@ async def run_ingest_pipeline(
     rebuild_index()
 
     # 9. 构建搜索索引（FTS5 + 嵌入向量）
+    _update(TaskStatus.INDEXING)
     wiki_root_path = get_wiki_root()
     for page_id in wiki_result["pages_created"]:
         parts = page_id.split("/", 1)
@@ -185,6 +188,7 @@ async def run_ingest_pipeline(
                 await store_embedding(page_id, page_content[:2000])
 
     # 10. 写入数据库
+    _update(TaskStatus.SAVING)
     db = await get_db()
     try:
         await db.execute(
