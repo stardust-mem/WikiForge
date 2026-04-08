@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Data
+backend/data/wiki.db
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+
+# Config secrets
+backend/config.yaml
+
+# OS
+.DS_Store
+*.swp
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,44 @@
+[project]
+name = "personal-wiki"
+version = "0.1.0"
+description = "PKM - Personal Knowledge Management with LLM-powered Wiki"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+    # LLM providers
+    "anthropic>=0.49",
+    "openai>=1.12",
+    # Document extraction
+    "pdfplumber>=0.10",
+    "python-docx>=1.1",
+    "python-pptx>=0.6.23",
+    # Embeddings & search
+    "sentence-transformers>=3.0",
+    "sqlite-vec>=0.1",
+    "bm25s>=0.2",
+    "jieba>=0.42",
+    # Utilities
+    "gitpython>=3.1",
+    "pyyaml>=6.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "aiosqlite>=0.20",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
