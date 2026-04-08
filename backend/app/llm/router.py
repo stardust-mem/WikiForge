@@ -28,7 +28,7 @@ def _build_provider(provider_type: str, provider_name: str, **kwargs) -> LLMProv
             model=kwargs.get("model", "claude-sonnet-4-6"),
         )
     else:
-        # DeepSeek / Kimi / Ollama / OpenAI 都走 OpenAI 兼容接口
+        # MiniMax / DeepSeek / Kimi / Ollama / OpenAI 都走 OpenAI 兼容接口
         base_url = kwargs["base_url"]
         api_key = kwargs.get("api_key", "ollama")
         if provider_name == "ollama" and not base_url.endswith("/v1"):
@@ -58,10 +58,11 @@ def get_provider(task: str) -> LLMProvider:
                 model=cfg.cloud_model,
             )
         elif provider_type == "local":
+            api_key = cfg.local_api_key or cfg.cloud_api_key or "ollama"
             _providers[cache_key] = _build_provider(
                 "local",
                 cfg.local_provider,
-                api_key="ollama",
+                api_key=api_key,
                 base_url=cfg.local_base_url,
                 model=cfg.local_model,
             )

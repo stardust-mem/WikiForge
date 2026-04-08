@@ -8,14 +8,15 @@ from pydantic import BaseModel
 
 
 class LLMConfig(BaseModel):
-    cloud_provider: str = "deepseek"
-    cloud_model: str = "deepseek-chat"
+    cloud_provider: str = "minimax"
+    cloud_model: str = "MiniMax-M2.7"
     cloud_api_key: str = ""
-    cloud_base_url: str = "https://api.deepseek.com"
+    cloud_base_url: str = "https://api.minimaxi.com/v1"
 
-    local_provider: str = "ollama"
-    local_model: str = "qwen2.5:14b"
-    local_base_url: str = "http://localhost:11434"
+    local_provider: str = "minimax"
+    local_model: str = "MiniMax-M2.7"
+    local_api_key: str = ""
+    local_base_url: str = "https://api.minimaxi.com/v1"
 
     vision_provider: str = "claude"
     vision_model: str = "claude-sonnet-4-6"

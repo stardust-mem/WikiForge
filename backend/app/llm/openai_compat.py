@@ -1,4 +1,4 @@
-"""OpenAI 兼容接口 — 适配 DeepSeek / Kimi / Ollama 等"""
+"""OpenAI 兼容接口 — 适配 MiniMax / DeepSeek / Kimi / Ollama 等"""
 
 import base64
 import json
@@ -9,10 +9,28 @@ from openai import AsyncOpenAI
 
 from app.llm.base import LLMProvider
 
+# MiniMax M2.x 模型会在输出中嵌入 <think>...</think> 推理块，需要剥离
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_reasoning(text: str) -> str:
+    """剥离 MiniMax 等模型输出中的 <think> 推理块"""
+    return _THINK_BLOCK_RE.sub("", text).strip()
+
+
+def _clean_json_text(text: str) -> str:
+    """清理 LLM 输出中的干扰内容，提取纯 JSON"""
+    text = _strip_reasoning(text)
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text
+
 
 class OpenAICompatProvider(LLMProvider):
     """
     通过 OpenAI SDK 兼容接口调用各种 LLM：
+    - MiniMax:  base_url="https://api.minimaxi.com/v1"
     - DeepSeek: base_url="https://api.deepseek.com"
     - Kimi:     base_url="https://api.moonshot.cn/v1"
     - Ollama:   base_url="http://localhost:11434/v1", api_key="ollama"
@@ -35,7 +53,8 @@ class OpenAICompatProvider(LLMProvider):
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        return resp.choices[0].message.content or ""
+        text = resp.choices[0].message.content or ""
+        return _strip_reasoning(text)
 
     async def chat_json(
         self,
@@ -49,7 +68,7 @@ class OpenAICompatProvider(LLMProvider):
             json_messages[0] = {
                 **json_messages[0],
                 "content": json_messages[0]["content"]
-                + "\n\n你必须以 JSON 格式输出，不要包含 markdown 代码块标记。",
+                + "\n\n你必须以 JSON 格式输出，不要包含 markdown 代码块标记。不要输出任何思考过程。",
             }
 
         resp = await self.client.chat.completions.create(
@@ -59,10 +78,7 @@ class OpenAICompatProvider(LLMProvider):
             max_tokens=max_tokens,
         )
         text = resp.choices[0].message.content or "{}"
-        # 清理可能的 markdown 代码块包裹
-        text = text.strip()
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
+        text = _clean_json_text(text)
         return json.loads(text)
 
     async def vision(

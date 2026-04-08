@@ -3,17 +3,21 @@
 
 llm:
   # 云端模型（用于 Wiki 生成、语义分段、问答等复杂任务）
-  cloud_provider: "deepseek"          # claude / deepseek / kimi / openai
-  cloud_model: "deepseek-chat"
-  cloud_api_key: ""
-  cloud_base_url: "https://api.deepseek.com"
+  cloud_provider: "minimax"             # minimax / claude / deepseek / kimi / openai
+  cloud_model: "MiniMax-M2.7"
+  cloud_api_key: ""                     # MINIMAX_API_KEY
+  cloud_base_url: "https://api.minimaxi.com/v1"
 
   # 本地模型（用于分类、简单摘要等轻量任务）
-  local_provider: "ollama"
-  local_model: "qwen2.5:14b"
-  local_base_url: "http://localhost:11434"
+  # 如果没有 Ollama，可以设置为与云端相同的配置，全部走 MiniMax
+  local_provider: "minimax"
+  local_model: "MiniMax-M2.7"
+  local_api_key: ""                     # 与 cloud_api_key 相同即可
+  local_base_url: "https://api.minimaxi.com/v1"
 
   # Vision 模型（用于图片描述，需要多模态能力）
+  # MiniMax 暂不支持 Vision，需要 Claude 或其他支持多模态的模型
+  # 如果暂时不处理图片，可以留空
   vision_provider: "claude"
   vision_model: "claude-sonnet-4-6"
   vision_api_key: ""
