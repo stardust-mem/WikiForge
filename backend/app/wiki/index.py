@@ -33,7 +33,7 @@ def rebuild_index() -> None:
                     if line.startswith("title:"):
                         title = line.split(":", 1)[1].strip().strip('"')
                         break
-                pages.append(f"- [{title}]({cat_key}/{md_file.stem})")
+                pages.append(f"- [{title}](/wiki/{cat_key}/{md_file.stem})")
                 total_pages += 1
 
         count = len(pages)

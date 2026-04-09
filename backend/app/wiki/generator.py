@@ -107,8 +107,10 @@ async def generate_wiki_pages(
     if index_md_path.exists():
         index_content = index_md_path.read_text(encoding="utf-8")
 
-    # 限制单次输入长度（分段后每段通常 < 6000 字符，加安全余量）
-    max_content_len = 12000
+    # MiniMax M2.7: 205K input tokens, 131K output tokens
+    # 预留: ~2K(CLAUDE.md) + ~5K(index) + ~1K(prompt) + 16K(输出)
+    # 单段内容上限: ~80K 字符 ≈ 50K tokens（留安全余量）
+    max_content_len = 80000
     truncated_content = content[:max_content_len]
     if len(content) > max_content_len:
         truncated_content += "\n\n[...内容已截断...]"

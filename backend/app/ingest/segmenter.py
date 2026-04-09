@@ -65,8 +65,10 @@ async def _llm_semantic_split(text: str) -> list[Segment]:
     """
     provider = get_provider("segment")
 
-    # 如果文本不长，直接整体分析
-    if _estimate_tokens(text) <= 3000:
+    # MiniMax M2.7 支持 205K tokens 输入
+    # 单段目标 ~40K tokens（留空间给 CLAUDE.md + index.md + prompt + 输出）
+    # 低于此阈值的文档不需要分段
+    if _estimate_tokens(text) <= 40000:
         result = await provider.chat_json(
             messages=[
                 {"role": "system", "content": SEGMENT_SYSTEM},
@@ -88,9 +90,9 @@ async def _llm_semantic_split(text: str) -> list[Segment]:
                 ))
         return segments if segments else [_whole_doc_segment(text)]
 
-    # 长文本：滑动窗口
-    window_size = 4000  # 字符
-    overlap = 400
+    # 超长文本：滑动窗口切分后让 LLM 识别主题边界
+    window_size = 60000  # 字符（~40K tokens）
+    overlap = 2000
     segments = []
     pos = 0
 
@@ -163,10 +165,10 @@ def _merge_overlapping(segments: list[Segment]) -> list[Segment]:
 
 
 async def _split_long_segments(segments: list[Segment]) -> list[Segment]:
-    """第三级：对超过 3000 tokens 的段落递归拆分"""
+    """第三级：对超过 40K tokens 的段落递归拆分"""
     result = []
     for seg in segments:
-        if seg.token_count > 3000:
+        if seg.token_count > 40000:
             sub_segments = await _llm_semantic_split(seg.content)
             for sub in sub_segments:
                 sub.parent_segment_id = seg.segment_id

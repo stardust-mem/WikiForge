@@ -1,6 +1,7 @@
 """Wiki 浏览 API"""
 
 from fastapi import APIRouter, HTTPException
+from pathlib import Path
 
 from app.config import get_wiki_root
 from app.models.schemas import WikiPageDetail, WikiTree, WikiPageSummary
@@ -8,6 +9,17 @@ from app.models.schemas import WikiPageDetail, WikiTree, WikiPageSummary
 router = APIRouter()
 
 CATEGORIES = ["entities", "concepts", "topics", "sources"]
+
+
+def _extract_title(md_file: Path) -> str:
+    """从文件的 frontmatter 中提取 title，fallback 到文件名 stem。"""
+    try:
+        for line in md_file.read_text(encoding="utf-8").split("\n"):
+            if line.startswith("title:"):
+                return line.split(":", 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    return md_file.stem
 
 
 @router.get("/tree", response_model=list[WikiTree])
@@ -22,7 +34,7 @@ async def get_wiki_tree():
             for md_file in sorted(cat_dir.glob("*.md")):
                 pages.append(WikiPageSummary(
                     page_id=f"{cat}/{md_file.stem}",
-                    title=md_file.stem.replace("-", " ").title(),
+                    title=_extract_title(md_file),
                     category=cat,
                     source_count=0,
                 ))
@@ -42,14 +54,7 @@ async def get_wiki_page(category: str, page_name: str):
         raise HTTPException(404, f"页面不存在: {category}/{page_name}")
 
     content = file_path.read_text(encoding="utf-8")
-
-    # 从 frontmatter 中提取 title（简单处理）
-    title = page_name.replace("-", " ").title()
-    lines = content.split("\n")
-    for line in lines:
-        if line.startswith("title:"):
-            title = line.split(":", 1)[1].strip().strip('"')
-            break
+    title = _extract_title(file_path)
 
     return WikiPageDetail(
         page_id=f"{category}/{page_name}",
