@@ -133,7 +133,7 @@ async def generate_wiki_pages(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=8192,
+        max_tokens=16384,
     )
 
     pages_created: list[str] = []
