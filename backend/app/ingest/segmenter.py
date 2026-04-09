@@ -197,8 +197,18 @@ async def segment_document(
             # 对超长段落做二次拆分
             return await _split_long_segments(structural)
 
-    # 第二级：LLM 语义分段
-    segments = await _llm_semantic_split(text)
+    # 第二级：LLM 语义分段（失败则 fallback 为整篇一段）
+    try:
+        segments = await _llm_semantic_split(text)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"LLM 语义分段失败，fallback 为整篇处理: {e}")
+        return [_whole_doc_segment(text)]
 
     # 第三级：超长段落递归拆分
-    return await _split_long_segments(segments)
+    try:
+        return await _split_long_segments(segments)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"递归拆分失败，使用已有分段: {e}")
+        return segments
