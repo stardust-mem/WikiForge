@@ -51,13 +51,25 @@ function getProgress(status: string): number {
   return Math.round((idx / (STEP_ORDER.length - 1)) * 100)
 }
 
+// sessionStorage 持久化任务 ID（切换页签不丢失）
+const STORAGE_KEY = 'pkm_pending_tasks'
+function loadPendingIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch { return new Set() }
+}
+function savePendingIds(ids: Set<string>) {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]))
+}
+
 export default function IngestPage() {
   const navigate = useNavigate()
   const [history, setHistory] = useState<IngestResult[]>([])
-  const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set())
+  const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(loadPendingIds)
   const [taskMap, setTaskMap] = useState<Record<string, TaskInfo>>({})
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pendingRef = useRef<Set<string>>(new Set())
+  const pendingRef = useRef<Set<string>>(loadPendingIds())
 
   // 加载历史记录
   useEffect(() => {
@@ -106,6 +118,7 @@ export default function IngestPage() {
               const next = new Set(prev)
               newCompleted.forEach(id => next.delete(id))
               pendingRef.current = next
+              savePendingIds(next)
               return next
             })
           }, 3000)
@@ -159,6 +172,7 @@ export default function IngestPage() {
         setPendingTaskIds(prev => {
           const next = new Set(prev).add(resp.task_id)
           pendingRef.current = next
+          savePendingIds(next)
           return next
         })
         setTaskMap(prev => ({ ...prev, [resp.task_id]: newTask }))

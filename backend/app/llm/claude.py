@@ -66,14 +66,13 @@ class ClaudeProvider(LLMProvider):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
         try:
-            return json.loads(text)
+            return json.loads(text, strict=False)
         except json.JSONDecodeError:
-            # Attempt to extract JSON by finding first { and last }
             start = text.find("{")
             end = text.rfind("}")
             if start != -1 and end != -1 and end > start:
                 try:
-                    return json.loads(text[start:end + 1])
+                    return json.loads(text[start:end + 1], strict=False)
                 except json.JSONDecodeError:
                     pass
             raise LLMOutputError(

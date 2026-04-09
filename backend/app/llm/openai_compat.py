@@ -1,13 +1,20 @@
 """OpenAI 兼容接口 — 适配 MiniMax / DeepSeek / Kimi / Ollama 等"""
 
+import asyncio
 import base64
 import json
+import logging
 import re
 from typing import Any
 
 from openai import AsyncOpenAI
 
 from app.llm.base import LLMProvider, LLMOutputError
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
 
 # MiniMax M2.x 模型会在输出中嵌入 <think>...</think> 推理块，需要剥离
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -41,18 +48,33 @@ class OpenAICompatProvider(LLMProvider):
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         self.model = model
 
+    async def _call_with_retry(self, messages, temperature, max_tokens):
+        """带重试的 API 调用（处理 500/超时等临时错误）"""
+        last_err = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return resp
+            except Exception as e:
+                last_err = e
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_DELAY * (attempt + 1)
+                    logger.warning(f"LLM API error (attempt {attempt+1}): {e}, retrying in {delay}s")
+                    await asyncio.sleep(delay)
+        raise last_err
+
     async def chat(
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.3,
         max_tokens: int = 4096,
     ) -> str:
-        resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        resp = await self._call_with_retry(messages, temperature, max_tokens)
         text = resp.choices[0].message.content or ""
         return _strip_reasoning(text)
 
@@ -71,23 +93,17 @@ class OpenAICompatProvider(LLMProvider):
                 + "\n\n你必须以 JSON 格式输出，不要包含 markdown 代码块标记。不要输出任何思考过程。",
             }
 
-        resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=json_messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        resp = await self._call_with_retry(json_messages, temperature, max_tokens)
         text = resp.choices[0].message.content or "{}"
         text = _clean_json_text(text)
         try:
-            return json.loads(text)
+            return json.loads(text, strict=False)
         except json.JSONDecodeError:
-            # Attempt to extract JSON by finding first { and last }
             start = text.find("{")
             end = text.rfind("}")
             if start != -1 and end != -1 and end > start:
                 try:
-                    return json.loads(text[start:end + 1])
+                    return json.loads(text[start:end + 1], strict=False)
                 except json.JSONDecodeError:
                     pass
             raise LLMOutputError(
