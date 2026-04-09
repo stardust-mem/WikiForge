@@ -271,6 +271,7 @@ async def run_ingest_pipeline(
                     "file_type": file_type,
                     "document_type": classification.document_type,
                     "pages_created": wiki_result["pages_created"],
+                    "pages_updated": wiki_result["pages_updated"],
                     "segments": len(segments),
                 }, ensure_ascii=False),
             ),
@@ -280,6 +281,9 @@ async def run_ingest_pipeline(
     finally:
         await db.close()
 
+    # Combine wiki pages that were merged with topic page updates
+    all_updated = wiki_result["pages_updated"] + topic_updates
+
     return IngestResponse(
         source_id=source_id,
         filename=filename,
@@ -287,5 +291,5 @@ async def run_ingest_pipeline(
         topic_tags=classification.topic_tags,
         summary=classification.summary_one_line,
         wiki_pages_created=wiki_result["pages_created"],
-        wiki_pages_updated=topic_updates,
+        wiki_pages_updated=all_updated,
     )

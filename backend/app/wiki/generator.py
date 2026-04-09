@@ -19,8 +19,34 @@ def _sanitize_filename(name: str) -> str:
     return name.strip("-")[:80]
 
 
-def _write_wiki_page(category: str, filename: str, content: str) -> str:
-    """写入 wiki 页面文件，返回 page_id"""
+def _strip_frontmatter(content: str) -> tuple[str, str]:
+    """Split content into (frontmatter_block, body).
+
+    If content starts with '---', returns the full frontmatter block
+    (including delimiters) and the remaining body.
+    Otherwise returns ('', content).
+    """
+    if not content.startswith("---"):
+        return "", content
+    end = content.find("---", 3)
+    if end == -1:
+        return "", content
+    # end points to the opening of the closing '---'
+    end_of_fm = content.index("\n", end) + 1 if "\n" in content[end:] else end + 3
+    return content[:end_of_fm], content[end_of_fm:]
+
+
+def _write_wiki_page(
+    category: str,
+    filename: str,
+    content: str,
+    source_id: str = "",
+    source_filename: str = "",
+) -> tuple[str, bool]:
+    """写入 wiki 页面文件，返回 (page_id, is_new)。
+
+    如果文件已存在，将新内容以补充来源的形式追加而非覆盖。
+    """
     wiki_root = get_wiki_root()
     cat_dir = wiki_root / category
     cat_dir.mkdir(parents=True, exist_ok=True)
@@ -29,10 +55,22 @@ def _write_wiki_page(category: str, filename: str, content: str) -> str:
         filename = filename + ".md"
 
     file_path = cat_dir / filename
-    file_path.write_text(content, encoding="utf-8")
-
     page_id = f"{category}/{Path(filename).stem}"
-    return page_id
+
+    if file_path.exists():
+        existing = file_path.read_text(encoding="utf-8")
+        # Extract only the body from the new content (skip its frontmatter)
+        _fm, new_body = _strip_frontmatter(content)
+        now = datetime.now().strftime("%Y-%m-%d")
+        merge_header = (
+            f"\n\n---\n\n## 补充来源: {source_filename} ({now})\n\n"
+        )
+        merged = existing.rstrip("\n") + merge_header + new_body.lstrip("\n")
+        file_path.write_text(merged, encoding="utf-8")
+        return page_id, False  # updated, not new
+    else:
+        file_path.write_text(content, encoding="utf-8")
+        return page_id, True  # brand new page
 
 
 async def generate_wiki_pages(
@@ -44,10 +82,12 @@ async def generate_wiki_pages(
     """
     根据文档内容和分类结果生成 Wiki 页面。
 
+    如果目标页面已存在，会将新内容合并追加而非覆盖。
+
     返回：
     {
-        "pages_created": ["sources/xxx", "concepts/yyy", ...],
-        "pages_updated": [],
+        "pages_created": ["sources/xxx", "concepts/yyy", ...],  # 全新页面
+        "pages_updated": ["concepts/zzz", ...],                 # 已有页面被追加
     }
     """
     provider = get_provider("wiki_generate")
@@ -76,8 +116,15 @@ async def generate_wiki_pages(
         max_tokens=8192,
     )
 
-    pages_created = []
+    pages_created: list[str] = []
+    pages_updated: list[str] = []
     now = datetime.now().strftime("%Y-%m-%d")
+
+    def _record(page_id: str, is_new: bool) -> None:
+        if is_new:
+            pages_created.append(page_id)
+        else:
+            pages_updated.append(page_id)
 
     # 1. 写入 source 页面
     source_page = result.get("source_page", {})
@@ -96,14 +143,18 @@ last_updated: "{now}"
 source_refs:
   - source_id: "{source_id}"
     filename: "{filename}"
+source_count: 1
 topic_tags: {json.dumps(classification.topic_tags, ensure_ascii=False)}
 ---
 
 """
             sp_content = frontmatter + sp_content
 
-        page_id = _write_wiki_page("sources", sp_filename, sp_content)
-        pages_created.append(page_id)
+        page_id, is_new = _write_wiki_page(
+            "sources", sp_filename, sp_content,
+            source_id=source_id, source_filename=filename,
+        )
+        _record(page_id, is_new)
 
     # 2. 写入 concept 页面
     for cp in result.get("concept_pages", []):
@@ -120,14 +171,18 @@ last_updated: "{now}"
 source_refs:
   - source_id: "{source_id}"
     filename: "{filename}"
+source_count: 1
 topic_tags: {json.dumps(classification.topic_tags, ensure_ascii=False)}
 ---
 
 """
             cp_content = frontmatter + cp_content
 
-        page_id = _write_wiki_page("concepts", cp_filename, cp_content)
-        pages_created.append(page_id)
+        page_id, is_new = _write_wiki_page(
+            "concepts", cp_filename, cp_content,
+            source_id=source_id, source_filename=filename,
+        )
+        _record(page_id, is_new)
 
     # 3. 写入 entity 页面
     for ep in result.get("entity_pages", []):
@@ -144,16 +199,20 @@ last_updated: "{now}"
 source_refs:
   - source_id: "{source_id}"
     filename: "{filename}"
+source_count: 1
 topic_tags: {json.dumps(classification.topic_tags, ensure_ascii=False)}
 ---
 
 """
             ep_content = frontmatter + ep_content
 
-        page_id = _write_wiki_page("entities", ep_filename, ep_content)
-        pages_created.append(page_id)
+        page_id, is_new = _write_wiki_page(
+            "entities", ep_filename, ep_content,
+            source_id=source_id, source_filename=filename,
+        )
+        _record(page_id, is_new)
 
     return {
         "pages_created": pages_created,
-        "pages_updated": [],
+        "pages_updated": pages_updated,
     }
