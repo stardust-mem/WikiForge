@@ -5,6 +5,7 @@ import sqlite3
 import jieba
 from app.models.database import get_db
 from app.search.embeddings import search_by_vector
+from app.search.bm25_index import search_bm25
 
 
 def _tokenize_zh(text: str) -> str:
@@ -14,7 +15,7 @@ def _tokenize_zh(text: str) -> str:
 
 
 async def index_page_fts(page_id: str, title: str, content: str) -> None:
-    """将页面写入 FTS5 全文索引（jieba 预分词）"""
+    """将页面写入 FTS5 全文索引（jieba 预分词）— 保留兼容"""
     tokenized_title = _tokenize_zh(title)
     tokenized_content = _tokenize_zh(content)
 
@@ -64,16 +65,17 @@ async def search_fts(query: str, top_k: int = 10) -> list[tuple[str, float]]:
 async def hybrid_search(
     query: str,
     top_k: int = 7,
-    fts_weight: float = 0.4,
+    bm25_weight: float = 0.4,
     vec_weight: float = 0.6,
 ) -> list[tuple[str, float]]:
     """
-    混合检索：FTS5 关键词 + 向量语义，加权合并排序。
+    混合检索：BM25 关键词 + 向量语义，加权合并排序。
 
     返回 [(page_id, combined_score), ...] 按分数降序。
     """
-    # 并行获取两路结果
-    fts_results = await search_fts(query, top_k=top_k * 2)
+    # BM25 关键词检索（替代 FTS5）
+    bm25_results = search_bm25(query, top_k=top_k * 2)
+    # 向量语义检索
     vec_results = await search_by_vector(query, top_k=top_k * 2)
 
     # 归一化分数到 [0, 1]
@@ -85,15 +87,15 @@ async def hybrid_search(
         span = max_s - min_s if max_s > min_s else 1.0
         return {pid: (s - min_s) / span for pid, s in results}
 
-    fts_scores = _normalize(fts_results)
+    bm25_scores = _normalize(bm25_results)
     vec_scores = _normalize(vec_results)
 
     # 合并
-    all_pages = set(fts_scores.keys()) | set(vec_scores.keys())
+    all_pages = set(bm25_scores.keys()) | set(vec_scores.keys())
     combined = []
     for page_id in all_pages:
         score = (
-            fts_weight * fts_scores.get(page_id, 0.0)
+            bm25_weight * bm25_scores.get(page_id, 0.0)
             + vec_weight * vec_scores.get(page_id, 0.0)
         )
         combined.append((page_id, score))

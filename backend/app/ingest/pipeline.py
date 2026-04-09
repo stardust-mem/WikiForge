@@ -281,6 +281,19 @@ async def run_ingest_pipeline(
     finally:
         await db.close()
 
+    # 11. 追加操作日志
+    from app.wiki.log import append_log
+    pages_summary = f"创建 {len(wiki_result['pages_created'])} 页, 更新 {len(wiki_result['pages_updated'])} 页"
+    append_log("ingest", f"{filename} | {classification.document_type} | {pages_summary}")
+
+    # 12. Git 自动提交
+    from app.wiki.git_ops import auto_commit
+    auto_commit(f"ingest: {filename} ({pages_summary})")
+
+    # 13. 重建 BM25 索引
+    from app.search.bm25_index import build_bm25_index
+    build_bm25_index()
+
     # Combine wiki pages that were merged with topic page updates
     all_updated = wiki_result["pages_updated"] + topic_updates
 
