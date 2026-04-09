@@ -168,10 +168,10 @@ async def run_ingest_pipeline(
         all_pages_updated = wiki_result["pages_updated"]
     else:
         # 长文档：逐段处理，每段独立生成 Wiki 页面
+        seen_pages: set[str] = set()  # 跟踪本轮已处理的页面
         for i, seg in enumerate(segments):
             seg_label = seg.title or f"第{i+1}段"
             seg_content = seg.content
-            # 每段带上段标题和摘要作为上下文
             if seg.title:
                 seg_content = f"## {seg.title}\n\n{seg_content}"
             if seg.summary:
@@ -180,22 +180,19 @@ async def run_ingest_pipeline(
             try:
                 seg_result = await generate_wiki_pages(
                     source_id=source_id,
-                    filename=f"{filename} (段落: {seg_label})",
+                    filename=filename,  # 保留原始文件名，不加段落后缀
                     content=seg_content,
                     classification=classification,
                 )
-                # 合并结果，去重
+                # 合并结果：同一轮 ingest 中首次出现算 created，不降级为 updated
                 for pid in seg_result["pages_created"]:
-                    if pid not in all_pages_created and pid not in all_pages_updated:
+                    if pid not in seen_pages:
                         all_pages_created.append(pid)
+                        seen_pages.add(pid)
                 for pid in seg_result["pages_updated"]:
-                    if pid not in all_pages_updated:
+                    if pid not in seen_pages:
                         all_pages_updated.append(pid)
-                    # 如果之前在 created 里，移到 updated（后续段更新了前面段创建的页面）
-                    if pid in all_pages_created:
-                        all_pages_created.remove(pid)
-                        if pid not in all_pages_updated:
-                            all_pages_updated.append(pid)
+                        seen_pages.add(pid)
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(

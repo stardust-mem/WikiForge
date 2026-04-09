@@ -108,9 +108,9 @@ async def generate_wiki_pages(
         index_content = index_md_path.read_text(encoding="utf-8")
 
     # MiniMax M2.7: 205K input tokens, 131K output tokens
-    # 预留: ~2K(CLAUDE.md) + ~5K(index) + ~1K(prompt) + 16K(输出)
-    # 单段内容上限: ~80K 字符 ≈ 50K tokens（留安全余量）
-    max_content_len = 80000
+    # Pipeline 已在上游做了智能分段，每段通常 < 60K 字符
+    # 这里仅做安全兜底，避免极端情况下超出模型限制
+    max_content_len = 120000  # ~80K tokens，留足 schema+index+output 空间
     truncated_content = content[:max_content_len]
     if len(content) > max_content_len:
         truncated_content += "\n\n[...内容已截断...]"
