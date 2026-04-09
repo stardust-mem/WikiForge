@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Upload,
   Card,
@@ -52,7 +52,8 @@ function getProgress(status: string): number {
 
 export default function IngestPage() {
   const [history, setHistory] = useState<IngestResult[]>([])
-  const [activeTasks, setActiveTasks] = useState<TaskInfo[]>([])
+  const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set())
+  const [taskMap, setTaskMap] = useState<Record<string, TaskInfo>>({})
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // 加载历史记录
@@ -63,42 +64,73 @@ export default function IngestPage() {
       .catch(() => {})
   }, [])
 
-  // 轮询活跃任务
-  useEffect(() => {
-    if (activeTasks.some(t => !['completed', 'failed'].includes(t.status))) {
-      if (!pollingRef.current) {
-        pollingRef.current = setInterval(async () => {
-          const resp = await fetch('/api/ingest/tasks')
-          const tasks: TaskInfo[] = await resp.json()
-          setActiveTasks(tasks)
+  // 轮询：只在有活跃任务时
+  const startPolling = useCallback(() => {
+    if (pollingRef.current) return
+    pollingRef.current = setInterval(async () => {
+      try {
+        const resp = await fetch('/api/ingest/tasks')
+        const allTasks: TaskInfo[] = await resp.json()
 
-          // 检查新完成的任务
-          for (const t of tasks) {
-            if (t.status === 'completed' && t.result) {
-              setHistory(prev => {
-                if (prev.some(h => h.source_id === t.result!.source_id)) return prev
-                return [t.result!, ...prev]
-              })
-            }
+        // 只跟踪我们提交的任务
+        const myTasks: Record<string, TaskInfo> = {}
+        for (const t of allTasks) {
+          if (pendingTaskIds.has(t.task_id)) {
+            myTasks[t.task_id] = t
           }
+        }
+        setTaskMap(myTasks)
 
-          // 所有任务都结束了，停止轮询
-          if (tasks.every(t => ['completed', 'failed'].includes(t.status))) {
+        // 检查完成的任务 → 移入 history
+        const newCompleted: string[] = []
+        for (const t of Object.values(myTasks)) {
+          if (t.status === 'completed' && t.result) {
+            setHistory(prev => {
+              if (prev.some(h => h.source_id === t.result!.source_id)) return prev
+              return [t.result!, ...prev]
+            })
+            newCompleted.push(t.task_id)
+          } else if (t.status === 'failed') {
+            newCompleted.push(t.task_id)
+          }
+        }
+
+        // 清除已完成的任务ID（延迟3秒让用户看到状态）
+        if (newCompleted.length > 0) {
+          setTimeout(() => {
+            setPendingTaskIds(prev => {
+              const next = new Set(prev)
+              newCompleted.forEach(id => next.delete(id))
+              return next
+            })
+          }, 3000)
+        }
+
+        // 没有活跃任务了，停止轮询
+        const stillActive = Object.values(myTasks).some(
+          t => !['completed', 'failed'].includes(t.status)
+        )
+        if (!stillActive && newCompleted.length > 0) {
+          setTimeout(() => {
             if (pollingRef.current) {
               clearInterval(pollingRef.current)
               pollingRef.current = null
             }
-          }
-        }, 1500)
-      }
+          }, 3500)
+        }
+      } catch { /* ignore */ }
+    }, 1500)
+  }, [pendingTaskIds])
+
+  // pendingTaskIds 变化时管理轮询
+  useEffect(() => {
+    if (pendingTaskIds.size > 0) {
+      startPolling()
     }
     return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
+      // 组件卸载时不清理轮询 — 让后台继续跑
     }
-  }, [activeTasks])
+  }, [pendingTaskIds, startPolling])
 
   const uploadProps: UploadProps = {
     name: 'file',
@@ -111,17 +143,16 @@ export default function IngestPage() {
       if (status === 'done') {
         const resp = info.file.response as { task_id: string; filename: string }
         message.info(`${info.file.name} 已提交处理`)
-        setActiveTasks(prev => [
-          ...prev,
-          {
-            task_id: resp.task_id,
-            filename: resp.filename,
-            status: 'pending',
-            progress_label: '等待处理',
-            error: null,
-            result: null,
-          },
-        ])
+        const newTask: TaskInfo = {
+          task_id: resp.task_id,
+          filename: resp.filename,
+          status: 'pending',
+          progress_label: '等待处理',
+          error: null,
+          result: null,
+        }
+        setPendingTaskIds(prev => new Set(prev).add(resp.task_id))
+        setTaskMap(prev => ({ ...prev, [resp.task_id]: newTask }))
       } else if (status === 'error') {
         const errMsg = info.file.response?.detail || '上传失败'
         message.error(`${info.file.name}: ${errMsg}`)
@@ -129,7 +160,11 @@ export default function IngestPage() {
     },
   }
 
+  const activeTasks = Object.values(taskMap).filter(
+    t => pendingTaskIds.has(t.task_id)
+  )
   const runningTasks = activeTasks.filter(t => !['completed', 'failed'].includes(t.status))
+  const justCompleted = activeTasks.filter(t => t.status === 'completed')
   const failedTasks = activeTasks.filter(t => t.status === 'failed')
 
   return (
@@ -150,11 +185,7 @@ export default function IngestPage() {
 
       {/* 正在处理的任务 */}
       {runningTasks.map((t) => (
-        <Card
-          key={t.task_id}
-          style={{ marginBottom: 16 }}
-          size="small"
-        >
+        <Card key={t.task_id} style={{ marginBottom: 16 }} size="small">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <LoadingOutlined spin style={{ fontSize: 20, color: '#1677ff' }} />
             <div style={{ flex: 1 }}>
@@ -169,6 +200,17 @@ export default function IngestPage() {
                 style={{ marginTop: 4 }}
               />
             </div>
+          </div>
+        </Card>
+      ))}
+
+      {/* 刚完成的任务（短暂显示） */}
+      {justCompleted.map((t) => (
+        <Card key={t.task_id} style={{ marginBottom: 16 }} size="small">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <CheckCircleOutlined style={{ fontSize: 20, color: '#52c41a' }} />
+            <Text strong>{t.filename}</Text>
+            <Text type="secondary">处理完成</Text>
           </div>
         </Card>
       ))}
