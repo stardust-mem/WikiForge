@@ -33,10 +33,39 @@ interface WikiTreeItem {
   pages: { page_id: string; title: string; category: string }[]
 }
 
-function convertWikilinks(md: string): string {
-  return md.replace(/\[\[([^\]]+)\]\]/g, (_, target) => {
-    const name = target.split('/').pop() || target
-    return `[${name}](/wiki/${target})`
+type TitleIndex = Map<string, string>
+
+function buildTitleIndex(tree: WikiTreeItem[]): TitleIndex {
+  const index = new Map<string, string>()
+  for (const t of tree) {
+    for (const p of t.pages) {
+      // page_id -> page_id (identity, always precise — overwrite is fine)
+      index.set(p.page_id, p.page_id)
+      // title -> page_id: first entry wins to avoid ambiguous duplicates
+      if (!index.has(p.title)) index.set(p.title, p.page_id)
+      // stem -> page_id: first entry wins
+      const stem = p.page_id.split('/').pop() || ''
+      if (stem && !index.has(stem)) index.set(stem, p.page_id)
+    }
+  }
+  return index
+}
+
+function convertWikilinks(md: string, titleIndex: TitleIndex): string {
+  return md.replace(/\[\[([^\]]+)\]\]/g, (_match, inner) => {
+    const pipeIdx = inner.indexOf('|')
+    const target = pipeIdx >= 0 ? inner.slice(0, pipeIdx) : inner
+    const label = pipeIdx >= 0 ? inner.slice(pipeIdx + 1) : null
+
+    // Try to resolve target to a page_id
+    const pageId = titleIndex.get(target) ?? titleIndex.get(target.trim())
+    const displayText = label ?? target.split('/').pop() ?? target
+
+    if (pageId) {
+      return `[${displayText}](/wiki/${pageId})`
+    }
+    // Unresolved: render as plain text to avoid broken links
+    return displayText
   })
 }
 
@@ -94,8 +123,10 @@ export default function WikiPage() {
 
   const selectedKey = category && pageName ? `${category}/${pageName}` : ''
 
+  const titleIndex = buildTitleIndex(tree)
+
   // Strip frontmatter and convert wikilinks for display
-  const displayContent = convertWikilinks(pageContent.replace(/^---[\s\S]*?---\n*/, ''))
+  const displayContent = convertWikilinks(pageContent.replace(/^---[\s\S]*?---\n*/, ''), titleIndex)
 
   return (
     <Layout style={{ background: '#fff', borderRadius: 8, minHeight: '70vh' }}>

@@ -10,11 +10,14 @@ import {
   List,
   message,
   Progress,
+  Popconfirm,
+  Button,
 } from 'antd'
 import {
   InboxOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 
@@ -70,6 +73,7 @@ export default function IngestPage() {
   const [taskMap, setTaskMap] = useState<Record<string, TaskInfo>>({})
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pendingRef = useRef<Set<string>>(loadPendingIds())
+  const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // 加载历史记录
   useEffect(() => {
@@ -113,7 +117,7 @@ export default function IngestPage() {
 
         // 清除已完成的任务ID（延迟3秒让用户看到状态）
         if (newCompleted.length > 0) {
-          setTimeout(() => {
+          const t1 = setTimeout(() => {
             setPendingTaskIds(prev => {
               const next = new Set(prev)
               newCompleted.forEach(id => next.delete(id))
@@ -122,6 +126,7 @@ export default function IngestPage() {
               return next
             })
           }, 3000)
+          timeoutRefs.current.push(t1)
         }
 
         // 没有活跃任务了，停止轮询
@@ -129,12 +134,13 @@ export default function IngestPage() {
           t => !['completed', 'failed'].includes(t.status)
         )
         if (!stillActive && newCompleted.length > 0) {
-          setTimeout(() => {
+          const t2 = setTimeout(() => {
             if (pollingRef.current) {
               clearInterval(pollingRef.current)
               pollingRef.current = null
             }
           }, 3500)
+          timeoutRefs.current.push(t2)
         }
       } catch { /* ignore */ }
     }, 1500)
@@ -146,7 +152,12 @@ export default function IngestPage() {
       startPolling()
     }
     return () => {
-      // 组件卸载时不清理轮询 — 让后台继续跑
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+      timeoutRefs.current.forEach(clearTimeout)
+      timeoutRefs.current = []
     }
   }, [pendingTaskIds, startPolling])
 
@@ -181,6 +192,24 @@ export default function IngestPage() {
         message.error(`${info.file.name}: ${errMsg}`)
       }
     },
+  }
+
+  const handleDelete = async (sourceId: string, filename: string) => {
+    try {
+      const resp = await fetch(`/api/ingest/${sourceId}`, { method: 'DELETE' })
+      if (!resp.ok) {
+        const err = await resp.json()
+        message.error(err.detail || '删除失败')
+        return
+      }
+      const result = await resp.json()
+      message.success(
+        `已删除 ${filename}，清理 ${result.pages_deleted.length} 个页面`
+      )
+      setHistory((prev) => prev.filter((h) => h.source_id !== sourceId))
+    } catch {
+      message.error('删除请求失败')
+    }
   }
 
   const activeTasks = Object.values(taskMap).filter(
@@ -260,6 +289,20 @@ export default function IngestPage() {
               <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />
               {r.filename}
             </span>
+          }
+          extra={
+            <Popconfirm
+              title="确认删除"
+              description={`将删除「${r.filename}」及其生成的 Wiki 页面，不可恢复。`}
+              onConfirm={() => handleDelete(r.source_id, r.filename)}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} size="small">
+                删除
+              </Button>
+            </Popconfirm>
           }
           style={{ marginBottom: 16 }}
           size="small"

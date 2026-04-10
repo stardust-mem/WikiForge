@@ -110,6 +110,125 @@ async def list_ingest_tasks():
     ]
 
 
+@router.delete("/ingest/{source_id}")
+async def delete_source(source_id: str):
+    """删除一个已导入的文档及其生成的 Wiki 内容"""
+    db = await get_db()
+    try:
+        # 1. 查找 source 是否存在
+        row = await db.execute(
+            "SELECT source_id, filename FROM sources WHERE source_id = ?",
+            (source_id,),
+        )
+        source = await row.fetchone()
+        if not source:
+            raise HTTPException(404, f"文档不存在: {source_id}")
+        filename = source["filename"]
+
+        # 2. 找到该 source 关联的所有 wiki 页面
+        page_rows = await db.execute_fetchall(
+            "SELECT page_id FROM source_page_map WHERE source_id = ?",
+            (source_id,),
+        )
+        page_ids = [r[0] for r in page_rows]
+
+        # 3. 区分独占页面 vs 共享页面
+        exclusive_pages = []
+        shared_pages = []
+        for page_id in page_ids:
+            cnt_row = await db.execute(
+                "SELECT COUNT(*) FROM source_page_map WHERE page_id = ?",
+                (page_id,),
+            )
+            cnt = (await cnt_row.fetchone())[0]
+            if cnt <= 1:
+                exclusive_pages.append(page_id)
+            else:
+                shared_pages.append(page_id)
+
+        # 4. 删除独占页面的所有关联记录
+        for page_id in exclusive_pages:
+            await db.execute("DELETE FROM wiki_fts WHERE page_id = ?", (page_id,))
+            await db.execute("DELETE FROM page_embeddings WHERE page_id = ?", (page_id,))
+            await db.execute(
+                "DELETE FROM page_refs WHERE from_page_id = ? OR to_page_id = ?",
+                (page_id, page_id),
+            )
+            await db.execute("DELETE FROM wiki_pages WHERE page_id = ?", (page_id,))
+
+        # 5. 共享页面：递减 source_count
+        for page_id in shared_pages:
+            await db.execute(
+                "UPDATE wiki_pages SET source_count = MAX(source_count - 1, 0) WHERE page_id = ?",
+                (page_id,),
+            )
+
+        # 6. 删除 source_page_map、segments、source 本身
+        await db.execute("DELETE FROM source_page_map WHERE source_id = ?", (source_id,))
+        await db.execute("DELETE FROM segments WHERE source_id = ?", (source_id,))
+        await db.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+
+        # 7. 操作日志
+        await db.execute(
+            """INSERT INTO operation_log (op_type, target_id, detail)
+               VALUES ('delete', ?, ?)""",
+            (source_id, json.dumps({
+                "filename": filename,
+                "exclusive_pages_deleted": exclusive_pages,
+                "shared_pages_kept": shared_pages,
+            }, ensure_ascii=False)),
+        )
+
+        await db.commit()
+    finally:
+        await db.close()
+
+    # 8. 删除独占页面的 wiki 文件
+    from app.config import get_wiki_root
+    wiki_root = get_wiki_root()
+    deleted_files = []
+    for page_id in exclusive_pages:
+        parts = page_id.split("/", 1)
+        if len(parts) == 2:
+            file_path = wiki_root / parts[0] / f"{parts[1]}.md"
+            if file_path.exists():
+                file_path.unlink()
+                deleted_files.append(str(file_path.relative_to(wiki_root)))
+
+    # 9. 清理 topic 页面中的 stale 引用
+    from app.wiki.topics import cleanup_topic_references
+    cleanup_topic_references(exclusive_pages, source_id)
+
+    # 10. 删除上传的原始文件
+    uploads_dir = get_uploads_dir()
+    upload_file = uploads_dir / filename
+    if upload_file.exists():
+        upload_file.unlink()
+
+    # 11. 重建 index.md
+    from app.wiki.index import rebuild_index
+    rebuild_index()
+
+    # 12. 追加操作日志
+    from app.wiki.log import append_log
+    append_log("delete", f"{filename} | 删除 {len(exclusive_pages)} 页, 保留共享 {len(shared_pages)} 页")
+
+    # 13. Git 自动提交
+    from app.wiki.git_ops import auto_commit
+    auto_commit(f"delete: {filename} (删除 {len(exclusive_pages)} 页)")
+
+    # 14. 重建 BM25 索引
+    from app.search.bm25_index import build_bm25_index
+    build_bm25_index()
+
+    return {
+        "source_id": source_id,
+        "filename": filename,
+        "pages_deleted": exclusive_pages,
+        "pages_kept_shared": shared_pages,
+    }
+
+
 @router.get("/ingest/history")
 async def get_ingest_history(limit: int = 20):
     """获取最近的导入记录（从数据库）"""
