@@ -73,12 +73,20 @@ def search_bm25(query: str, top_k: int = 10) -> list[tuple[str, float]]:
         return []
 
     retriever = bm25s.BM25.load(str(INDEX_DIR), load_corpus=True)
-    results, scores = retriever.retrieve([query_tokens], corpus=retriever.corpus, k=min(top_k, retriever.num_docs), show_progress=False)
+    n_docs = len(retriever.corpus) if retriever.corpus is not None else 0
+    if n_docs == 0:
+        return []
+    results, scores = retriever.retrieve([query_tokens], corpus=retriever.corpus, k=min(top_k, n_docs), show_progress=False)
 
-    # results[0] = array of page_ids for query 0, scores[0] = corresponding scores
+    # results[0] = array of corpus items for query 0, scores[0] = corresponding scores
     output = []
-    for page_id, score in zip(results[0], scores[0]):
+    for item, score in zip(results[0], scores[0]):
         if score > 0:
-            output.append((str(page_id), float(score)))
+            # bm25s corpus items may be dicts or strings depending on save format
+            if isinstance(item, dict):
+                page_id = item.get("text", str(item))
+            else:
+                page_id = str(item)
+            output.append((page_id, float(score)))
 
     return output
