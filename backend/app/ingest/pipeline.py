@@ -210,7 +210,7 @@ async def run_ingest_pipeline(
     topic_updates = []
     if all_affected:
         source_page_id = all_affected[0]
-        topic_updates = update_topic_pages(
+        topic_updates = await update_topic_pages(
             topic_tags=classification.topic_tags,
             source_page_id=source_page_id,
             source_filename=filename,
