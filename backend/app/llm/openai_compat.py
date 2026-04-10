@@ -45,7 +45,11 @@ class OpenAICompatProvider(LLMProvider):
     """
 
     def __init__(self, base_url: str, api_key: str, model: str):
-        self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        self.client = AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=300.0,  # 5 分钟超时（推理模型响应慢）
+        )
         self.model = model
 
     async def _call_with_retry(self, messages, temperature, max_tokens):
