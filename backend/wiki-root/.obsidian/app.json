@@ -1,0 +1,10 @@
+{
+  "useMarkdownLinks": false,
+  "newLinkFormat": "relative",
+  "strictLineBreaks": true,
+  "showFrontmatter": true,
+  "readableLineLength": true,
+  "showLineNumber": false,
+  "spellcheck": false,
+  "defaultViewMode": "preview"
+}

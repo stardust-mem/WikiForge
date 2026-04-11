@@ -25,3 +25,11 @@ backend/config.yaml
 # IDE
 .vscode/
 .idea/
+
+# Obsidian（保留 app.json 等配置，排除工作区缓存）
+backend/wiki-root/.obsidian/workspace.json
+backend/wiki-root/.obsidian/workspace-mobile.json
+backend/wiki-root/.obsidian/graph.json
+backend/wiki-root/.obsidian/hotkeys.json
+backend/wiki-root/.obsidian/plugins/
+backend/wiki-root/.obsidian/themes/
