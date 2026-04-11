@@ -18,6 +18,8 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
   DeleteOutlined,
+  DownOutlined,
+  UpOutlined,
 } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 
@@ -71,6 +73,7 @@ export default function IngestPage() {
   const [history, setHistory] = useState<IngestResult[]>([])
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(loadPendingIds)
   const [taskMap, setTaskMap] = useState<Record<string, TaskInfo>>({})
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pendingRef = useRef<Set<string>>(loadPendingIds())
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -170,7 +173,11 @@ export default function IngestPage() {
     onChange(info) {
       const { status } = info.file
       if (status === 'done') {
-        const resp = info.file.response as { task_id: string; filename: string }
+        const resp = info.file.response as { task_id: string; filename: string; status: string; existing_filename?: string }
+        if (resp.status === 'duplicate') {
+          message.warning(`${info.file.name} 内容已存在（与「${resp.existing_filename}」重复），已跳过`)
+          return
+        }
         message.info(`${info.file.name} 已提交处理`)
         const newTask: TaskInfo = {
           task_id: resp.task_id,
@@ -210,6 +217,18 @@ export default function IngestPage() {
     } catch {
       message.error('删除请求失败')
     }
+  }
+
+  const toggleExpand = (sourceId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(sourceId)) {
+        next.delete(sourceId)
+      } else {
+        next.add(sourceId)
+      }
+      return next
+    })
   }
 
   const activeTasks = Object.values(taskMap).filter(
@@ -281,59 +300,81 @@ export default function IngestPage() {
       ))}
 
       {/* 历史记录 */}
-      {history.map((r) => (
-        <Card
-          key={r.source_id}
-          title={
-            <span>
-              <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />
-              {r.filename}
-            </span>
-          }
-          extra={
-            <Popconfirm
-              title="确认删除"
-              description={`将删除「${r.filename}」及其生成的 Wiki 页面，不可恢复。`}
-              onConfirm={() => handleDelete(r.source_id, r.filename)}
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-            >
-              <Button type="text" danger icon={<DeleteOutlined />} size="small">
-                删除
-              </Button>
-            </Popconfirm>
-          }
-          style={{ marginBottom: 16 }}
-          size="small"
-        >
-          <Descriptions column={1} size="small">
-            <Descriptions.Item label="文档类型">
-              <Tag color="blue">{r.document_type}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="主题标签">
-              {r.topic_tags.map((t) => (
-                <Tag key={t}>{t}</Tag>
-              ))}
-            </Descriptions.Item>
-            <Descriptions.Item label="摘要">{r.summary}</Descriptions.Item>
-          </Descriptions>
-          {r.wiki_pages_created.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <strong>生成的 Wiki 页面：</strong>
-              <List
-                size="small"
-                dataSource={r.wiki_pages_created}
-                renderItem={(p) => (
-                  <List.Item>
-                    <a href={`/wiki/${p}`} onClick={(e) => { e.preventDefault(); navigate(`/wiki/${p}`) }}>{p}</a>
-                  </List.Item>
+      {history.map((r) => {
+        const isExpanded = expandedIds.has(r.source_id)
+        return (
+          <Card
+            key={r.source_id}
+            title={
+              <span>
+                <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />
+                {r.filename}
+              </span>
+            }
+            extra={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                  onClick={() => toggleExpand(r.source_id)}
+                />
+                <Popconfirm
+                  title="确认删除"
+                  description={`将删除「${r.filename}」及其生成的 Wiki 页面，不可恢复。`}
+                  onConfirm={() => handleDelete(r.source_id, r.filename)}
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button type="text" danger icon={<DeleteOutlined />} size="small">
+                    删除
+                  </Button>
+                </Popconfirm>
+              </span>
+            }
+            style={{ marginBottom: 16 }}
+            size="small"
+          >
+            {isExpanded ? (
+              <>
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="文档类型">
+                    <Tag color="blue">{r.document_type}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="主题标签">
+                    {r.topic_tags.map((t) => (
+                      <Tag key={t}>{t}</Tag>
+                    ))}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="摘要">{r.summary}</Descriptions.Item>
+                </Descriptions>
+                {r.wiki_pages_created.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <strong>生成的 Wiki 页面：</strong>
+                    <List
+                      size="small"
+                      dataSource={r.wiki_pages_created}
+                      renderItem={(p) => (
+                        <List.Item>
+                          <a href={`/wiki/${p}`} onClick={(e) => { e.preventDefault(); navigate(`/wiki/${p}`) }}>{p}</a>
+                        </List.Item>
+                      )}
+                    />
+                  </div>
                 )}
-              />
-            </div>
-          )}
-        </Card>
-      ))}
+              </>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Tag color="blue">{r.document_type}</Tag>
+                <Text ellipsis style={{ flex: 1, color: '#666' }}>
+                  {r.summary?.length > 60 ? r.summary.slice(0, 60) + '…' : r.summary}
+                </Text>
+              </div>
+            )}
+          </Card>
+        )
+      })}
     </div>
   )
 }

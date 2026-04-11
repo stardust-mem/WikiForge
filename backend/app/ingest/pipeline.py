@@ -328,6 +328,12 @@ async def run_ingest_pipeline(
     finally:
         await db.close()
 
+    # 10.5 更新交叉引用
+    all_affected_pages = wiki_result["pages_created"] + wiki_result["pages_updated"]
+    if all_affected_pages:
+        from app.wiki.refs import rebuild_refs_for_pages
+        await rebuild_refs_for_pages(all_affected_pages)
+
     # 11. 追加操作日志
     from app.wiki.log import append_log
     pages_summary = f"创建 {len(wiki_result['pages_created'])} 页, 更新 {len(wiki_result['pages_updated'])} 页"

@@ -14,6 +14,13 @@ from app.models.schemas import ClassificationResult
 def _sanitize_filename(name: str) -> str:
     """将标题转为合法的文件名"""
     name = name.lower().strip()
+    # 去掉 LLM 可能返回的文件格式后缀（如 "xxx-md", "xxx.pdf"）
+    for suffix in ("-md", "-pdf", "-docx", "-doc", "-pptx", "-ppt", "-txt",
+                   "_md", "_pdf", "_docx", "_doc", "_pptx", "_ppt", "_txt",
+                   ".md", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".txt"):
+        if name.endswith(suffix):
+            name = name[:-len(suffix)]
+            break
     # 去掉 LLM 可能返回的分类路径前缀（如 "sources/xxx" → "xxx"）
     for prefix in ("sources/", "concepts/", "entities/", "topics/"):
         if name.startswith(prefix):

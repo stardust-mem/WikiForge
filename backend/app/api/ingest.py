@@ -66,6 +66,25 @@ async def ingest_file(file: UploadFile = File(...)):
     content = await file.read()
     content_hash = hashlib.sha256(content).hexdigest()
 
+    # 前置去重检查：相同内容的文件直接返回，不启动后台任务
+    db = await get_db()
+    try:
+        row = await db.execute(
+            "SELECT source_id, filename FROM sources WHERE content_hash = ?",
+            (content_hash,),
+        )
+        existing = await row.fetchone()
+    finally:
+        await db.close()
+
+    if existing:
+        return {
+            "task_id": "",
+            "filename": safe_filename,
+            "status": "duplicate",
+            "existing_filename": existing["filename"],
+        }
+
     with open(file_path, "wb") as f:
         f.write(content)
 

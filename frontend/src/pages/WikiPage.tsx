@@ -1,18 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Typography, Spin, Empty } from 'antd'
+import { Layout, Menu, Typography, Spin, Empty, Divider, List } from 'antd'
 import {
   UserOutlined,
   BulbOutlined,
   TagsOutlined,
   FileTextOutlined,
+  LinkOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { MenuProps } from 'antd'
 
 const { Sider, Content } = Layout
-const { Title } = Typography
+const { Title, Text } = Typography
 
 const categoryIcons: Record<string, React.ReactNode> = {
   entities: <UserOutlined />,
@@ -31,6 +32,12 @@ const categoryNames: Record<string, string> = {
 interface WikiTreeItem {
   category: string
   pages: { page_id: string; title: string; category: string }[]
+}
+
+interface Backlink {
+  page_id: string
+  title: string
+  context: string
 }
 
 type TitleIndex = Map<string, string>
@@ -77,6 +84,13 @@ export default function WikiPage() {
   const [pageContent, setPageContent] = useState<string>('')
   const [pageTitle, setPageTitle] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [backlinks, setBacklinks] = useState<Backlink[]>([])
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Scroll content to top when page changes
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 })
+  }, [category, pageName])
 
   // Load wiki tree — refetch when navigating back to /wiki
   useEffect(() => {
@@ -110,6 +124,18 @@ export default function WikiPage() {
     }
   }, [category, pageName])
 
+  // Load backlinks
+  useEffect(() => {
+    if (category && pageName) {
+      fetch(`/api/wiki/backlinks/${category}/${pageName}`)
+        .then((r) => r.json())
+        .then(setBacklinks)
+        .catch(() => setBacklinks([]))
+    } else {
+      setBacklinks([])
+    }
+  }, [category, pageName])
+
   // Build menu items
   const menuItems: MenuProps['items'] = tree.map((t) => ({
     key: t.category,
@@ -129,13 +155,15 @@ export default function WikiPage() {
   const displayContent = convertWikilinks(pageContent.replace(/^---[\s\S]*?---\n*/, ''), titleIndex)
 
   return (
-    <Layout style={{ background: '#fff', borderRadius: 8, minHeight: '70vh' }}>
+    <Layout style={{ background: '#fff', borderRadius: 8, height: 'calc(100vh - 112px)', overflow: 'hidden' }}>
       <Sider
         width={260}
         style={{
           background: '#fff',
           borderRight: '1px solid #f0f0f0',
-          overflow: 'auto',
+          height: '100%',
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <div style={{ padding: '16px 16px 8px', fontWeight: 600, fontSize: 16 }}>
@@ -150,7 +178,7 @@ export default function WikiPage() {
           style={{ border: 'none' }}
         />
       </Sider>
-      <Content style={{ padding: '24px 32px' }}>
+      <Content ref={contentRef} style={{ padding: '24px 32px', height: '100%', overflowY: 'auto' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
             <Spin size="large" />
@@ -181,6 +209,37 @@ export default function WikiPage() {
             >
               {displayContent}
             </ReactMarkdown>
+
+            {backlinks.length > 0 && (
+              <>
+                <Divider />
+                <div>
+                  <Title level={5}><LinkOutlined /> 反向链接</Title>
+                  <List
+                    size="small"
+                    dataSource={backlinks}
+                    renderItem={(bl) => (
+                      <List.Item>
+                        <a
+                          href={`/wiki/${bl.page_id}`}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            navigate(`/wiki/${bl.page_id}`)
+                          }}
+                        >
+                          {bl.title}
+                        </a>
+                        {bl.context && (
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            {bl.context.length > 80 ? bl.context.slice(0, 80) + '...' : bl.context}
+                          </Text>
+                        )}
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <Empty description="选择左侧页面查看内容" />

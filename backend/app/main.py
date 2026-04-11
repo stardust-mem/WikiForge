@@ -21,8 +21,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Personal Wiki",
-    description="PKM - 个人知识管理系统",
+    title="NEWTYPE",
+    description="NEWTYPE - 个人知识管理系统",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -37,11 +37,12 @@ app.add_middleware(
 
 
 # 注册 API 路由
-from app.api import ingest, wiki, search  # noqa: E402
+from app.api import ingest, wiki, search, lint  # noqa: E402
 
 app.include_router(ingest.router, prefix="/api", tags=["ingest"])
 app.include_router(wiki.router, prefix="/api/wiki", tags=["wiki"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(lint.router, prefix="/api/lint", tags=["lint"])
 
 
 @app.get("/api/health")

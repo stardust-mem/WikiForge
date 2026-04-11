@@ -3,6 +3,7 @@ import {
   UploadOutlined,
   BookOutlined,
   SearchOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 
@@ -12,6 +13,7 @@ const menuItems = [
   { key: '/wiki', icon: <BookOutlined />, label: 'Wiki' },
   { key: '/ingest', icon: <UploadOutlined />, label: '导入文档' },
   { key: '/search', icon: <SearchOutlined />, label: '搜索问答' },
+  { key: '/lint', icon: <SafetyCertificateOutlined />, label: '健康检查' },
 ]
 
 export default function AppLayout() {
@@ -40,7 +42,7 @@ export default function AppLayout() {
           }}
           onClick={() => navigate('/wiki')}
         >
-          PKM Wiki
+          NEWTYPE
         </div>
         <Menu
           mode="horizontal"

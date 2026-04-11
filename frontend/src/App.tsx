@@ -5,6 +5,7 @@ import AppLayout from './components/Layout'
 import IngestPage from './pages/IngestPage'
 import WikiPage from './pages/WikiPage'
 import SearchPage from './pages/SearchPage'
+import LintPage from './pages/LintPage'
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/wiki" element={<WikiPage />} />
             <Route path="/wiki/:category/:pageName" element={<WikiPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/lint" element={<LintPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

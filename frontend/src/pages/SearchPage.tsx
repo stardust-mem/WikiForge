@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Input, Card, Typography, List, Spin, Empty } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { Input, Card, Typography, List, Spin, Empty, Button, message } from 'antd'
+import { SearchOutlined, SaveOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -8,18 +8,52 @@ import remarkGfm from 'remark-gfm'
 const { Title, Paragraph } = Typography
 const { Search } = Input
 
+interface SuggestedPage {
+  title: string
+  category: string
+  content: string
+}
+
 interface QueryResult {
   answer: string
   citations: string[]
+  suggested_page?: SuggestedPage | null
 }
 
 export default function SearchPage() {
   const [result, setResult] = useState<QueryResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [lastQuestion, setLastQuestion] = useState('')
   const navigate = useNavigate()
+
+  const handleArchive = async (page: SuggestedPage) => {
+    setArchiving(true)
+    try {
+      const resp = await fetch('/api/search/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: page.title,
+          category: page.category,
+          content: page.content,
+          source_question: lastQuestion,
+        }),
+      })
+      if (!resp.ok) throw new Error(`Server error: ${resp.status}`)
+      const data = await resp.json()
+      message.success('已归档为 Wiki 页面')
+      navigate(`/wiki/${data.page_id}`)
+    } catch {
+      message.error('归档失败，请重试')
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   const handleSearch = async (question: string) => {
     if (!question.trim()) return
+    setLastQuestion(question)
     setLoading(true)
     try {
       const resp = await fetch('/api/search/query', {
@@ -87,6 +121,22 @@ export default function SearchPage() {
                   </List.Item>
                 )}
               />
+            </div>
+          )}
+
+          {result.suggested_page && (
+            <div style={{ marginTop: 16, borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={archiving}
+                onClick={() => handleArchive(result.suggested_page!)}
+              >
+                归档为 Wiki 页面：{result.suggested_page.title}
+              </Button>
+              <Paragraph type="secondary" style={{ marginTop: 4, fontSize: 12 }}>
+                分类：{result.suggested_page.category}
+              </Paragraph>
             </div>
           )}
         </Card>
