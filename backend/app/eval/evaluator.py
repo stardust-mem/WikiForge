@@ -80,7 +80,7 @@ async def eval_ingest(
                     wiki_content=wiki_preview,
                 )},
             ],
-            max_tokens=2048,
+            max_tokens=8192,  # Qwen3.5 thinking 模式需要足够的 token 空间
         )
     except Exception as e:
         logger.warning(f"Eval 调用失败: {e}")
