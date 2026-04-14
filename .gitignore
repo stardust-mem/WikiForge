@@ -14,9 +14,25 @@ frontend/dist/
 backend/data/wiki.db
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
+backend/data/bm25_index/
 
 # Config secrets
 backend/config.yaml
+.env
+
+# Wiki content (user's personal knowledge — not tracked in repo)
+backend/wiki-root/concepts/*
+backend/wiki-root/entities/*
+backend/wiki-root/sources/*
+backend/wiki-root/topics/*
+backend/wiki-root/index.md
+backend/wiki-root/log.md
+backend/wiki-root/*.canvas
+# Keep directory placeholders
+!backend/wiki-root/concepts/.gitkeep
+!backend/wiki-root/entities/.gitkeep
+!backend/wiki-root/sources/.gitkeep
+!backend/wiki-root/topics/.gitkeep
 
 # OS
 .DS_Store
