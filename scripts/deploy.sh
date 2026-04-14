@@ -1,5 +1,5 @@
 #!/bin/bash
-# PKM Wiki 一键部署脚本
+# WikiForge 一键部署脚本
 # 用法: ./scripts/deploy.sh "commit message"
 
 set -e
