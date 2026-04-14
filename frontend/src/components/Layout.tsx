@@ -42,7 +42,7 @@ export default function AppLayout() {
           }}
           onClick={() => navigate('/wiki')}
         >
-          NEWTYPE
+          WikiForge
         </div>
         <Menu
           mode="horizontal"

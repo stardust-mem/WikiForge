@@ -21,8 +21,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="NEWTYPE",
-    description="NEWTYPE - 个人知识管理系统",
+    title="WikiForge",
+    description="WikiForge - AI-powered document-to-wiki compiler",
     version="0.1.0",
     lifespan=lifespan,
 )
