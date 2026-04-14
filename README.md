@@ -78,7 +78,7 @@ wiki-root/
 ### 1. Clone
 
 ```bash
-git clone https://github.com/rmit-s3567360-jun-feng/WikiForge.git
+git clone https://github.com/stardust-mem/WikiForge.git
 cd wikiforge
 ```
 
@@ -350,7 +350,7 @@ Issues and PRs are welcome.
 
 ```bash
 # 1. 克隆
-git clone https://github.com/rmit-s3567360-jun-feng/WikiForge.git
+git clone https://github.com/stardust-mem/WikiForge.git
 cd wikiforge
 
 # 2. 配置 API Keys
